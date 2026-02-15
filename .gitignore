@@ -1,0 +1,31 @@
+# Rust
+target/
+Cargo.lock
+
+# C++ build
+cpp/build/
+*.o
+*.a
+*.so
+*.dylib
+*.dll
+
+# Model files
+models/
+*.gguf
+
+# macOS
+.DS_Store
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Logs
+*.log
+
+# Environment
+.env
