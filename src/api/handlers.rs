@@ -1,6 +1,6 @@
 use axum::extract::State;
 use axum::http::StatusCode;
-use axum::response::Json;
+use axum::response::{Html, Json};
 use serde_json::{json, Value};
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -371,3 +371,165 @@ pub async fn list_catalog() -> Json<Value> {
 
     Json(json!({"object": "list", "data": catalog}))
 }
+
+// ============================================================================
+// Web Chat UI
+// ============================================================================
+
+pub async fn index_html(State(state): State<SharedState>) -> Html<String> {
+    let model_id = state
+        .loaded_model_id
+        .read()
+        .await
+        .clone()
+        .unwrap_or_else(|| "none".to_string());
+    Html(build_chat_html(&model_id))
+}
+
+fn build_chat_html(model_id: &str) -> String {
+    format!(r##"<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MOFA Local LLM</title>
+<style>
+*, *::before, *::after {{ box-sizing: border-box; margin: 0; padding: 0; }}
+body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0f0f0f; color: #e0e0e0; height: 100vh; display: flex; flex-direction: column; }}
+header {{ background: #1a1a2e; padding: 16px 24px; display: flex; align-items: center; gap: 16px; border-bottom: 1px solid #2a2a3e; }}
+header h1 {{ font-size: 20px; color: #7c83ff; }}
+header .model-badge {{ background: #2a2a3e; color: #a0a0c0; padding: 4px 12px; border-radius: 12px; font-size: 13px; }}
+header .status {{ margin-left: auto; color: #4caf50; font-size: 13px; }}
+#chat {{ flex: 1; overflow-y: auto; padding: 24px; display: flex; flex-direction: column; gap: 16px; }}
+.msg {{ max-width: 80%; padding: 12px 16px; border-radius: 12px; line-height: 1.6; white-space: pre-wrap; word-break: break-word; }}
+.msg.user {{ align-self: flex-end; background: #2a2a5e; color: #d0d0ff; border-bottom-right-radius: 4px; }}
+.msg.assistant {{ align-self: flex-start; background: #1e1e1e; color: #e0e0e0; border-bottom-left-radius: 4px; border: 1px solid #2a2a2a; }}
+.msg.assistant pre {{ background: #111; padding: 12px; border-radius: 8px; overflow-x: auto; margin: 8px 0; }}
+.msg.assistant code {{ font-family: 'SF Mono', Monaco, Menlo, monospace; font-size: 13px; }}
+.msg .meta {{ font-size: 11px; color: #666; margin-top: 6px; }}
+#input-area {{ padding: 16px 24px; background: #1a1a1a; border-top: 1px solid #2a2a2a; display: flex; gap: 12px; }}
+#user-input {{ flex: 1; background: #2a2a2a; border: 1px solid #3a3a3a; border-radius: 12px; padding: 12px 16px; color: #e0e0e0; font-size: 15px; outline: none; resize: none; min-height: 48px; max-height: 120px; font-family: inherit; }}
+#user-input:focus {{ border-color: #7c83ff; }}
+#send-btn {{ background: #7c83ff; border: none; border-radius: 12px; padding: 0 24px; color: white; font-size: 15px; font-weight: 600; cursor: pointer; transition: background 0.2s; }}
+#send-btn:hover {{ background: #6a70e0; }}
+#send-btn:disabled {{ background: #3a3a4a; cursor: not-allowed; }}
+.typing {{ display: inline-flex; gap: 4px; padding: 8px 16px; }}
+.typing span {{ width: 8px; height: 8px; background: #555; border-radius: 50%; animation: bounce 1.4s infinite ease-in-out; }}
+.typing span:nth-child(1) {{ animation-delay: -0.32s; }}
+.typing span:nth-child(2) {{ animation-delay: -0.16s; }}
+@keyframes bounce {{ 0%, 80%, 100% {{ transform: scale(0); }} 40% {{ transform: scale(1); }} }}
+</style>
+</head>
+<body>
+<header>
+  <h1>MOFA Local LLM</h1>
+  <span class="model-badge">{model_id}</span>
+  <span class="status" id="status">Ready</span>
+</header>
+<div id="chat">
+  <div class="msg assistant">Welcome! I'm running locally on your Apple Silicon. Ask me anything.</div>
+</div>
+<div id="input-area">
+  <textarea id="user-input" rows="1" placeholder="Type a message..." autofocus></textarea>
+  <button id="send-btn" onclick="sendMessage()">Send</button>
+</div>
+<script>
+const MODEL = "{model_id}";
+const chatEl = document.getElementById('chat');
+const inputEl = document.getElementById('user-input');
+const sendBtn = document.getElementById('send-btn');
+const statusEl = document.getElementById('status');
+let messages = [];
+
+inputEl.addEventListener('keydown', e => {{
+  if (e.key === 'Enter' && !e.shiftKey) {{ e.preventDefault(); sendMessage(); }}
+}});
+inputEl.addEventListener('input', () => {{
+  inputEl.style.height = 'auto';
+  inputEl.style.height = Math.min(inputEl.scrollHeight, 120) + 'px';
+}});
+
+function addMsg(role, content, meta) {{
+  const div = document.createElement('div');
+  div.className = 'msg ' + role;
+  div.textContent = content;
+  if (meta) {{
+    const m = document.createElement('div');
+    m.className = 'meta';
+    m.textContent = meta;
+    div.appendChild(m);
+  }}
+  chatEl.appendChild(div);
+  chatEl.scrollTop = chatEl.scrollHeight;
+  return div;
+}}
+
+function showTyping() {{
+  const div = document.createElement('div');
+  div.className = 'msg assistant typing';
+  div.id = 'typing';
+  div.innerHTML = '<span></span><span></span><span></span>';
+  chatEl.appendChild(div);
+  chatEl.scrollTop = chatEl.scrollHeight;
+}}
+function hideTyping() {{
+  const el = document.getElementById('typing');
+  if (el) el.remove();
+}}
+
+async function sendMessage() {{
+  const text = inputEl.value.trim();
+  if (!text) return;
+
+  inputEl.value = '';
+  inputEl.style.height = 'auto';
+  sendBtn.disabled = true;
+  statusEl.textContent = 'Generating...';
+  statusEl.style.color = '#ff9800';
+
+  addMsg('user', text);
+  messages.push({{ role: 'user', content: text }});
+
+  showTyping();
+  const t0 = performance.now();
+
+  try {{
+    const resp = await fetch('/v1/chat/completions', {{
+      method: 'POST',
+      headers: {{ 'Content-Type': 'application/json' }},
+      body: JSON.stringify({{
+        model: MODEL,
+        messages: messages,
+        max_tokens: 2048,
+        temperature: 0.7,
+      }}),
+    }});
+
+    hideTyping();
+    const data = await resp.json();
+    const elapsed = ((performance.now() - t0) / 1000).toFixed(1);
+
+    if (data.choices && data.choices.length > 0) {{
+      const reply = data.choices[0].message.content;
+      const tokens = data.usage ? data.usage.completion_tokens : '?';
+      const tps = data.usage ? (data.usage.completion_tokens / (performance.now() - t0) * 1000).toFixed(1) : '?';
+      addMsg('assistant', reply, tokens + ' tokens | ' + tps + ' tok/s | ' + elapsed + 's');
+      messages.push({{ role: 'assistant', content: reply }});
+    }} else if (data.error) {{
+      addMsg('assistant', 'Error: ' + (data.error.message || JSON.stringify(data.error)));
+    }}
+  }} catch (e) {{
+    hideTyping();
+    addMsg('assistant', 'Network error: ' + e.message);
+  }}
+
+  sendBtn.disabled = false;
+  statusEl.textContent = 'Ready';
+  statusEl.style.color = '#4caf50';
+  inputEl.focus();
+}}
+</script>
+</body>
+</html>"##, model_id = model_id)
+}
+

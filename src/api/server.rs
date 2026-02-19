@@ -16,6 +16,8 @@ pub fn build_router(state: SharedState) -> Router {
         .allow_headers(Any);
 
     Router::new()
+        // Web UI
+        .route("/", get(handlers::index_html))
         // OpenAI-compatible endpoints
         .route("/v1/chat/completions", post(handlers::chat_completion))
         .route("/v1/models", get(handlers::list_models))
@@ -51,16 +53,17 @@ pub async fn start_server(
 
     eprintln!();
     eprintln!("  MOFA Local LLM Server");
-    eprintln!("  http://0.0.0.0:{}", port);
+    eprintln!("  http://localhost:{}", port);
     eprintln!();
     eprintln!("  Endpoints:");
-    eprintln!("    POST   /v1/chat/completions     - Chat completion");
-    eprintln!("    GET    /v1/models               - List downloaded models");
-    eprintln!("    POST   /v1/models/download      - Download from HuggingFace");
-    eprintln!("    DELETE /v1/models/{{id}}          - Delete a model");
-    eprintln!("    POST   /v1/audio/transcriptions  - Transcribe audio (WAV)");
-    eprintln!("    GET    /v1/catalog               - List all available models");
-    eprintln!("    GET    /health                   - Health check");
+    eprintln!("    GET    /                          - Web Chat UI");
+    eprintln!("    POST   /v1/chat/completions       - Chat completion (OpenAI API)");
+    eprintln!("    GET    /v1/models                 - List downloaded models");
+    eprintln!("    POST   /v1/models/download        - Download from HuggingFace");
+    eprintln!("    DELETE /v1/models/{{id}}            - Delete a model");
+    eprintln!("    POST   /v1/audio/transcriptions   - Transcribe audio (WAV)");
+    eprintln!("    GET    /v1/catalog                - List all available models");
+    eprintln!("    GET    /health                    - Health check");
     eprintln!();
 
     axum::serve(listener, app).await?;
