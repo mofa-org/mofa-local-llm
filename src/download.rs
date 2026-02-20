@@ -116,7 +116,7 @@ pub fn download_model(
     // Extract metadata
     let quant = detect_quantization(&dest_dir);
     let size_bytes = calculate_model_size(&dest_dir);
-    let model_type = detect_model_type_from_config(&dest_dir);
+    let model_type = crate::config::detect_model_type(&dest_dir);
 
     let now = chrono::Utc::now().to_rfc3339();
 
@@ -147,17 +147,7 @@ fn detect_quantization(model_dir: &Path) -> Option<QuantInfo> {
     None
 }
 
-fn detect_model_type_from_config(model_dir: &Path) -> String {
-    let config_path = model_dir.join("config.json");
-    if let Ok(content) = std::fs::read_to_string(&config_path) {
-        if let Ok(v) = serde_json::from_str::<serde_json::Value>(&content) {
-            if let Some(mt) = v.get("model_type").and_then(|v| v.as_str()) {
-                return mt.to_string();
-            }
-        }
-    }
-    "unknown".to_string()
-}
+
 
 /// Register a downloaded model into the app config.
 pub fn register_model(config: &mut AppConfig, entry: ModelEntry) {
