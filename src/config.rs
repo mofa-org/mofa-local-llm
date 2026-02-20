@@ -158,7 +158,7 @@ pub fn calculate_model_size(model_dir: &Path) -> u64 {
         .sum()
 }
 
-fn detect_model_type(model_dir: &Path) -> String {
+pub fn detect_model_type(model_dir: &Path) -> String {
     let config_path = model_dir.join("config.json");
     if let Ok(content) = std::fs::read_to_string(&config_path) {
         if let Ok(v) = serde_json::from_str::<serde_json::Value>(&content) {
