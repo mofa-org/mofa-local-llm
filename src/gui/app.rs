@@ -552,7 +552,8 @@ impl eframe::App for MofaApp {
 
 fn detect_backend(model_type: &str) -> Option<LlmBackend> {
     match model_type {
-        "qwen2" | "qwen3" | "qwen" => Some(LlmBackend::Qwen3),
+        "qwen2" => Some(LlmBackend::Qwen2),
+        "qwen3" | "qwen" => Some(LlmBackend::Qwen3),
         "mistral" => Some(LlmBackend::Mistral),
         "glm4" | "chatglm" => Some(LlmBackend::Glm4),
         "mixtral" => Some(LlmBackend::Mixtral),
