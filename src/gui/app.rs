@@ -15,7 +15,7 @@ use crate::models::{ModelCategory, ModelDef, MODEL_CATALOG};
 enum AppEvent {
     Token(String),
     GenerationComplete(String),
-    ModelLoaded(String),
+    ModelLoaded(String, Arc<Mutex<LlmEngine>>),
     ModelLoadError(String),
     DownloadProgress(String, String),
     DownloadComplete(String),
@@ -131,8 +131,9 @@ impl MofaApp {
                     }
                     self.status_message = "Generation complete.".to_string();
                 }
-                AppEvent::ModelLoaded(id) => {
+                AppEvent::ModelLoaded(id, engine) => {
                     self.loaded_model_id = Some(id.clone());
+                    self.loaded_engine = Some(engine);
                     self.is_loading_model = false;
                     self.status_message = format!("Model '{}' loaded.", id);
                 }
@@ -248,8 +249,6 @@ impl MofaApp {
         let model_id_owned = model_id.to_string();
         let path = entry.path.clone();
         let tx = self.event_tx.clone();
-        let engine_holder = self.loaded_engine.clone();
-
         std::thread::spawn(move || {
             match LlmEngine::load(
                 std::path::Path::new(&path),
@@ -257,9 +256,8 @@ impl MofaApp {
                 &model_id_owned,
             ) {
                 Ok(engine) => {
-                    let _ = tx.send(AppEvent::ModelLoaded(model_id_owned));
-                    // We can't set self.loaded_engine from here directly,
-                    // so we'll use a different approach
+                    let engine = Arc::new(Mutex::new(engine));
+                    let _ = tx.send(AppEvent::ModelLoaded(model_id_owned, engine));
                 }
                 Err(e) => {
                     let _ = tx.send(AppEvent::ModelLoadError(e));
