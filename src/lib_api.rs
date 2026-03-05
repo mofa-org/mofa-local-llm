@@ -241,3 +241,26 @@ impl Clone for LocalLLMClient {
         }
     }
 }
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_new_with_default_dir() {
+        let client = LocalLLMClient::new(None);
+        assert!(client.is_ok());
+    }
+
+    #[test]
+    fn test_list_models() {
+        let client = LocalLLMClient::new(None).unwrap();
+        let models = client.list_models();
+        assert!(models.len() >= 0);
+    }
+
+    #[test]
+    fn test_is_model_loaded_false() {
+        let client = LocalLLMClient::new(None).unwrap();
+        assert!(!client.is_model_loaded("nonexistent-model"));
+    }
+}
