@@ -67,3 +67,47 @@ impl LocalLLMClient {
         engines.contains_key(model_id)
     }
 }
+    pub fn get_model_info(&self, model_id: &str) -> Option<ModelEntry> {
+        let config = self.config.read().unwrap();
+        config
+            .models
+            .iter()
+            .find(|m| m.id == model_id)
+            .cloned()
+    }
+
+    pub fn load_model(&self, model_id: &str) -> Result<(), String> {
+        {
+            let engines = self.engines.read().unwrap();
+            if engines.contains_key(model_id) {
+                return Ok(());
+            }
+        }
+
+        let model_entry = {
+            let config = self.config.read().unwrap();
+            config
+                .models
+                .iter()
+                .find(|m| m.id == model_id)
+                .cloned()
+                .ok_or_else(|| format!("Model '{}' not found. Use list_models() to see available models.", model_id))?
+        };
+
+        let backend = detect_backend(&model_entry.model_type)
+            .ok_or_else(|| format!("Unknown model type: {}", model_entry.model_type))?;
+
+        let model_path = Path::new(&model_entry.path);
+        if !model_path.exists() {
+            return Err(format!("Model path does not exist: {}", model_entry.path));
+        }
+
+        let engine = LlmEngine::load(model_path, backend, model_id)
+            .map_err(|e| format!("Failed to load model '{}': {}", model_id, e))?;
+
+        let mut engines = self.engines.write().unwrap();
+        engines.insert(model_id.to_string(), Arc::new(RwLock::new(engine)));
+
+        Ok(())
+    }
+}
