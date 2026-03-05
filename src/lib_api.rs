@@ -233,3 +233,11 @@ impl LocalLLMClient {
         Ok(model_id)
     }
 }
+impl Clone for LocalLLMClient {
+    fn clone(&self) -> Self {
+        Self {
+            config: Arc::clone(&self.config),
+            engines: Arc::clone(&self.engines),
+        }
+    }
+}
