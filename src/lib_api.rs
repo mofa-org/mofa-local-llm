@@ -44,7 +44,8 @@ impl LocalLLMClient {
         let mut config = AppConfig::load(models_dir_str.as_deref());
         config.scan_models_dir();
         
-        let _ = config.save();
+        config.save()
+            .map_err(|e| format!("Failed to save config: {}", e))?;
 
         Ok(Self {
             config: Arc::new(RwLock::new(config)),
@@ -77,6 +78,7 @@ impl LocalLLMClient {
     }
 
     pub fn load_model(&self, model_id: &str) -> Result<(), String> {
+        // Check if already loaded (quick read check first)
         {
             let engines = self.engines.read().unwrap();
             if engines.contains_key(model_id) {
@@ -84,6 +86,7 @@ impl LocalLLMClient {
             }
         }
 
+        // Get model entry info (outside the write lock to minimize lock time)
         let model_entry = {
             let config = self.config.read().unwrap();
             config
@@ -102,10 +105,17 @@ impl LocalLLMClient {
             return Err(format!("Model path does not exist: {}", model_entry.path));
         }
 
+        // Double-check and insert with write lock to prevent race condition
+        let mut engines = self.engines.write().unwrap();
+        // Check again under write lock to prevent duplicate loads
+        if engines.contains_key(model_id) {
+            return Ok(());
+        }
+
+        // Load the model (expensive operation, but now protected by write lock)
         let engine = LlmEngine::load(model_path, backend, model_id)
             .map_err(|e| format!("Failed to load model '{}': {}", model_id, e))?;
 
-        let mut engines = self.engines.write().unwrap();
         engines.insert(model_id.to_string(), Arc::new(RwLock::new(engine)));
 
         Ok(())
@@ -147,10 +157,12 @@ impl LocalLLMClient {
         engines.remove(model_id);
     }
 
-    pub fn scan_models_dir(&self) {
+    pub fn scan_models_dir(&self) -> Result<(), String> {
         let mut config = self.config.write().unwrap();
         config.scan_models_dir();
-        let _ = config.save();
+        config.save()
+            .map_err(|e| format!("Failed to save config: {}", e))?;
+        Ok(())
     }
 
     pub fn config(&self) -> AppConfig {
@@ -383,7 +395,8 @@ mod tests {
     fn test_scan_models_dir() {
         let client = LocalLLMClient::new(None).unwrap();
         // Should not panic
-        client.scan_models_dir();
+        let result = client.scan_models_dir();
+        assert!(result.is_ok());
     }
 
     #[test]
