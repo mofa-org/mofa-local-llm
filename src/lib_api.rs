@@ -80,7 +80,8 @@ impl LocalLLMClient {
     pub fn load_model(&self, model_id: &str) -> Result<(), String> {
         // Check if already loaded (quick read check first)
         {
-            let engines = self.engines.read().unwrap();
+            let engines = self.engines.read()
+                .map_err(|_| "Lock poisoned: another thread panicked while holding the lock".to_string())?;
             if engines.contains_key(model_id) {
                 return Ok(());
             }
@@ -88,7 +89,8 @@ impl LocalLLMClient {
 
         // Get model entry info (outside the write lock to minimize lock time)
         let model_entry = {
-            let config = self.config.read().unwrap();
+            let config = self.config.read()
+                .map_err(|_| "Lock poisoned: another thread panicked while holding the lock".to_string())?;
             config
                 .models
                 .iter()
@@ -106,7 +108,8 @@ impl LocalLLMClient {
         }
 
         // Double-check and insert with write lock to prevent race condition
-        let mut engines = self.engines.write().unwrap();
+        let mut engines = self.engines.write()
+            .map_err(|_| "Lock poisoned: another thread panicked while holding the lock".to_string())?;
         // Check again under write lock to prevent duplicate loads
         if engines.contains_key(model_id) {
             return Ok(());
@@ -128,14 +131,16 @@ impl LocalLLMClient {
         max_tokens: usize,
         temperature: f32,
     ) -> Result<ChatResult, String> {
-        let engines = self.engines.read().unwrap();
+        let engines = self.engines.read()
+            .map_err(|_| "Lock poisoned: another thread panicked while holding the lock".to_string())?;
         let engine_arc = engines
             .get(model_id)
             .ok_or_else(|| format!("Model '{}' is not loaded. Call load_model() first.", model_id))?
             .clone();
         drop(engines);
 
-        let mut engine = engine_arc.write().unwrap();
+        let mut engine = engine_arc.write()
+            .map_err(|_| "Lock poisoned: another thread panicked while holding the lock".to_string())?;
         engine.chat(messages, max_tokens, temperature)
     }
 
@@ -158,7 +163,8 @@ impl LocalLLMClient {
     }
 
     pub fn scan_models_dir(&self) -> Result<(), String> {
-        let mut config = self.config.write().unwrap();
+        let mut config = self.config.write()
+            .map_err(|_| "Lock poisoned: another thread panicked while holding the lock".to_string())?;
         config.scan_models_dir();
         config.save()
             .map_err(|e| format!("Failed to save config: {}", e))?;
@@ -213,7 +219,8 @@ impl LocalLLMClient {
             });
 
         {
-            let engines = self.engines.read().unwrap();
+            let engines = self.engines.read()
+                .map_err(|_| "Lock poisoned: another thread panicked while holding the lock".to_string())?;
             if engines.contains_key(&model_id) {
                 return Ok(model_id);
             }
@@ -239,7 +246,8 @@ impl LocalLLMClient {
         let engine = LlmEngine::load(model_path, backend, &model_id)
             .map_err(|e| format!("Failed to load model from path: {}", e))?;
 
-        let mut engines = self.engines.write().unwrap();
+        let mut engines = self.engines.write()
+            .map_err(|_| "Lock poisoned: another thread panicked while holding the lock".to_string())?;
         engines.insert(model_id.clone(), Arc::new(RwLock::new(engine)));
 
         Ok(model_id)
