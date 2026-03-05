@@ -245,10 +245,19 @@ impl Clone for LocalLLMClient {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Arc;
+    use std::thread;
 
     #[test]
     fn test_new_with_default_dir() {
         let client = LocalLLMClient::new(None);
+        assert!(client.is_ok());
+    }
+
+    #[test]
+    fn test_new_with_custom_dir() {
+        let temp_dir = std::env::temp_dir().join("test_models_mofa");
+        let client = LocalLLMClient::new(Some(temp_dir));
         assert!(client.is_ok());
     }
 
@@ -263,5 +272,158 @@ mod tests {
     fn test_is_model_loaded_false() {
         let client = LocalLLMClient::new(None).unwrap();
         assert!(!client.is_model_loaded("nonexistent-model"));
+    }
+
+    #[test]
+    fn test_get_model_info_nonexistent() {
+        let client = LocalLLMClient::new(None).unwrap();
+        let info = client.get_model_info("nonexistent-model");
+        assert!(info.is_none());
+    }
+
+    #[test]
+    fn test_models_dir() {
+        let client = LocalLLMClient::new(None).unwrap();
+        let dir = client.models_dir();
+        assert!(!dir.as_os_str().is_empty());
+    }
+
+    #[test]
+    fn test_loaded_models_empty() {
+        let client = LocalLLMClient::new(None).unwrap();
+        let loaded = client.loaded_models();
+        assert_eq!(loaded.len(), 0);
+    }
+
+    #[test]
+    fn test_unload_model_not_loaded() {
+        let client = LocalLLMClient::new(None).unwrap();
+        // Should not panic
+        client.unload_model("nonexistent-model");
+    }
+
+    #[test]
+    fn test_load_model_not_found() {
+        let client = LocalLLMClient::new(None).unwrap();
+        let result = client.load_model("nonexistent-model");
+        assert!(result.is_err());
+        let error_msg = result.unwrap_err();
+        assert!(error_msg.contains("not found") || error_msg.contains("Model"));
+    }
+
+    #[test]
+    fn test_chat_model_not_loaded() {
+        let client = LocalLLMClient::new(None).unwrap();
+        let messages = vec![("user".to_string(), "test".to_string())];
+        let result = client.chat("nonexistent-model", &messages, 10, 0.7);
+        assert!(result.is_err());
+        let error_msg = result.unwrap_err();
+        assert!(error_msg.contains("not loaded") || error_msg.contains("Model"));
+    }
+
+    #[test]
+    fn test_clone() {
+        let client = LocalLLMClient::new(None).unwrap();
+        let cloned = client.clone();
+        assert_eq!(client.list_models(), cloned.list_models());
+    }
+
+    #[test]
+    fn test_concurrent_list_models() {
+        let client = Arc::new(LocalLLMClient::new(None).unwrap());
+        let mut handles = vec![];
+
+        for _ in 0..10 {
+            let client_clone = Arc::clone(&client);
+            handles.push(thread::spawn(move || {
+                client_clone.list_models()
+            }));
+        }
+
+        let results: Vec<_> = handles.into_iter().map(|h| h.join().unwrap()).collect();
+        // All threads should get the same result
+        assert!(results.iter().all(|r| r == &results[0]));
+    }
+
+    #[test]
+    fn test_concurrent_is_model_loaded() {
+        let client = Arc::new(LocalLLMClient::new(None).unwrap());
+        let mut handles = vec![];
+
+        for _ in 0..10 {
+            let client_clone = Arc::clone(&client);
+            handles.push(thread::spawn(move || {
+                client_clone.is_model_loaded("test-model")
+            }));
+        }
+
+        let results: Vec<_> = handles.into_iter().map(|h| h.join().unwrap()).collect();
+        // All threads should get the same result
+        assert!(results.iter().all(|r| r == &results[0]));
+    }
+
+    #[test]
+    fn test_concurrent_get_model_info() {
+        let client = Arc::new(LocalLLMClient::new(None).unwrap());
+        let mut handles = vec![];
+
+        for _ in 0..10 {
+            let client_clone = Arc::clone(&client);
+            handles.push(thread::spawn(move || {
+                client_clone.get_model_info("test-model")
+            }));
+        }
+
+        let results: Vec<_> = handles.into_iter().map(|h| h.join().unwrap()).collect();
+        // All threads should get the same result
+        assert!(results.iter().all(|r| r == &results[0]));
+    }
+
+    #[test]
+    fn test_scan_models_dir() {
+        let client = LocalLLMClient::new(None).unwrap();
+        // Should not panic
+        client.scan_models_dir();
+    }
+
+    #[test]
+    fn test_config() {
+        let client = LocalLLMClient::new(None).unwrap();
+        let config = client.config();
+        assert!(!config.models_dir.is_empty());
+    }
+
+    #[test]
+    fn test_default_model() {
+        let client = LocalLLMClient::new(None).unwrap();
+        let default = client.default_model();
+        // May be None if no models available
+        if let Some(model_id) = default {
+            assert!(!model_id.is_empty());
+        }
+    }
+
+    #[test]
+    fn test_is_model_available() {
+        let client = LocalLLMClient::new(None).unwrap();
+        let available = client.is_model_available("nonexistent-model");
+        assert!(!available);
+    }
+
+    #[test]
+    fn test_get_model_backend_nonexistent() {
+        let client = LocalLLMClient::new(None).unwrap();
+        let backend = client.get_model_backend("nonexistent-model");
+        assert!(backend.is_none());
+    }
+
+    #[test]
+    fn test_load_model_from_path_invalid() {
+        let client = LocalLLMClient::new(None).unwrap();
+        let invalid_path = std::path::Path::new("/nonexistent/path/to/model");
+        let result = client.load_model_from_path(invalid_path, None);
+        assert!(result.is_err());
+        let error_msg = result.unwrap_err();
+        assert!(error_msg.contains("does not exist"));
     }
 }
