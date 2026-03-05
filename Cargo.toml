@@ -4,6 +4,8 @@ version = "0.1.0"
 edition = "2021"
 rust-version = "1.82.0"
 description = "Local ML inference server and GUI for Apple Silicon, powered by OminiX-MLX"
+# Note: This crate is designed to be used as a standalone library.
+# When copied to a separate repository, ensure workspace configuration is set up appropriately.
 
 [[bin]]
 name = "mofa-server"
