@@ -51,7 +51,7 @@ impl LocalLLMClient {
             engines: Arc::new(RwLock::new(HashMap::new())),
         })
     }
-}
+
     pub fn models_dir(&self) -> PathBuf {
         let config = self.config.read().unwrap();
         PathBuf::from(&config.models_dir)
@@ -66,7 +66,7 @@ impl LocalLLMClient {
         let engines = self.engines.read().unwrap();
         engines.contains_key(model_id)
     }
-}
+
     pub fn get_model_info(&self, model_id: &str) -> Option<ModelEntry> {
         let config = self.config.read().unwrap();
         config
@@ -110,7 +110,7 @@ impl LocalLLMClient {
 
         Ok(())
     }
-}
+
     pub fn chat(
         &self,
         model_id: &str,
@@ -128,7 +128,7 @@ impl LocalLLMClient {
         let mut engine = engine_arc.write().unwrap();
         engine.chat(messages, max_tokens, temperature)
     }
-}
+
     pub fn chat_with_auto_load(
         &self,
         model_id: &str,
@@ -233,6 +233,7 @@ impl LocalLLMClient {
         Ok(model_id)
     }
 }
+
 impl Clone for LocalLLMClient {
     fn clone(&self) -> Self {
         Self {
