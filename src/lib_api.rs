@@ -129,3 +129,107 @@ impl LocalLLMClient {
         engine.chat(messages, max_tokens, temperature)
     }
 }
+    pub fn chat_with_auto_load(
+        &self,
+        model_id: &str,
+        messages: &[(String, String)],
+        max_tokens: usize,
+        temperature: f32,
+    ) -> Result<ChatResult, String> {
+        if !self.is_model_loaded(model_id) {
+            self.load_model(model_id)?;
+        }
+        self.chat(model_id, messages, max_tokens, temperature)
+    }
+
+    pub fn unload_model(&self, model_id: &str) {
+        let mut engines = self.engines.write().unwrap();
+        engines.remove(model_id);
+    }
+
+    pub fn scan_models_dir(&self) {
+        let mut config = self.config.write().unwrap();
+        config.scan_models_dir();
+        let _ = config.save();
+    }
+
+    pub fn config(&self) -> AppConfig {
+        self.config.read().unwrap().clone()
+    }
+
+    pub fn loaded_models(&self) -> Vec<String> {
+        let engines = self.engines.read().unwrap();
+        engines.keys().cloned().collect()
+    }
+
+    pub fn default_model(&self) -> Option<String> {
+        let models = self.list_models();
+        models.first().cloned()
+    }
+
+    pub fn is_model_available(&self, model_id: &str) -> bool {
+        let config = self.config.read().unwrap();
+        config
+            .models
+            .iter()
+            .any(|m| m.id == model_id && Path::new(&m.path).exists())
+    }
+
+    pub fn get_model_backend(&self, model_id: &str) -> Option<LlmBackend> {
+        let model_entry = self.get_model_info(model_id)?;
+        detect_backend(&model_entry.model_type)
+    }
+
+    pub fn load_model_from_path(
+        &self,
+        model_path: impl AsRef<Path>,
+        model_id: Option<&str>,
+    ) -> Result<String, String> {
+        let model_path = model_path.as_ref();
+        if !model_path.exists() {
+            return Err(format!("Model path does not exist: {}", model_path.display()));
+        }
+
+        let model_id = model_id
+            .map(|s| s.to_string())
+            .unwrap_or_else(|| {
+                model_path
+                    .file_name()
+                    .unwrap_or_default()
+                    .to_string_lossy()
+                    .to_string()
+            });
+
+        {
+            let engines = self.engines.read().unwrap();
+            if engines.contains_key(&model_id) {
+                return Ok(model_id);
+            }
+        }
+
+        let config_json = model_path.join("config.json");
+        let model_type = if config_json.exists() {
+            std::fs::read_to_string(&config_json)
+                .ok()
+                .and_then(|s| {
+                    serde_json::from_str::<serde_json::Value>(&s)
+                        .ok()
+                        .and_then(|v| v.get("model_type").and_then(|v| v.as_str()).map(|s| s.to_string()))
+                })
+                .unwrap_or_else(|| "qwen2".to_string())
+        } else {
+            "qwen2".to_string()
+        };
+
+        let backend = detect_backend(&model_type)
+            .ok_or_else(|| format!("Unknown model type: {}", model_type))?;
+
+        let engine = LlmEngine::load(model_path, backend, &model_id)
+            .map_err(|e| format!("Failed to load model from path: {}", e))?;
+
+        let mut engines = self.engines.write().unwrap();
+        engines.insert(model_id.clone(), Arc::new(RwLock::new(engine)));
+
+        Ok(model_id)
+    }
+}
