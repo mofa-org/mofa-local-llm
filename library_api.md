@@ -20,6 +20,7 @@ The main entry point for using mofa-local-llm as a library.
 
 ```rust
 use mofa_local_llm::LocalLLMClient;
+use std::path::PathBuf;
 
 // Create client with default model directory (~/.mofa/models/)
 let client = LocalLLMClient::new(None)?;
