@@ -111,3 +111,21 @@ impl LocalLLMClient {
         Ok(())
     }
 }
+    pub fn chat(
+        &self,
+        model_id: &str,
+        messages: &[(String, String)],
+        max_tokens: usize,
+        temperature: f32,
+    ) -> Result<ChatResult, String> {
+        let engines = self.engines.read().unwrap();
+        let engine_arc = engines
+            .get(model_id)
+            .ok_or_else(|| format!("Model '{}' is not loaded. Call load_model() first.", model_id))?
+            .clone();
+        drop(engines);
+
+        let mut engine = engine_arc.write().unwrap();
+        engine.chat(messages, max_tokens, temperature)
+    }
+}
