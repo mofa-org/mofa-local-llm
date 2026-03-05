@@ -52,3 +52,18 @@ impl LocalLLMClient {
         })
     }
 }
+    pub fn models_dir(&self) -> PathBuf {
+        let config = self.config.read().unwrap();
+        PathBuf::from(&config.models_dir)
+    }
+
+    pub fn list_models(&self) -> Vec<String> {
+        let config = self.config.read().unwrap();
+        config.models.iter().map(|m| m.id.clone()).collect()
+    }
+
+    pub fn is_model_loaded(&self, model_id: &str) -> bool {
+        let engines = self.engines.read().unwrap();
+        engines.contains_key(model_id)
+    }
+}
