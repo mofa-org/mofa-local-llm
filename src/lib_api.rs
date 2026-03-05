@@ -277,7 +277,8 @@ mod tests {
     fn test_list_models() {
         let client = LocalLLMClient::new(None).unwrap();
         let models = client.list_models();
-        assert!(models.len() >= 0);
+        // Verify all model IDs are non-empty strings
+        assert!(models.iter().all(|id| !id.is_empty()));
     }
 
     #[test]
